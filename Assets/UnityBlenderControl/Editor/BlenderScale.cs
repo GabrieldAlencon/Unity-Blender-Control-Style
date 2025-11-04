@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.ProBuilder;
+using UnityEditor.ProBuilder;
 using static TransformModeManager;
 
 public class BlenderScale : BlenderTransformMode {
@@ -18,7 +20,40 @@ public class BlenderScale : BlenderTransformMode {
     Bounds bounds;
 
     public override bool ShouldTrigger(Event evt) {
-        return BlenderHelper.ShouldTriggerSimple(evt, KeyCode.S);
+        // Soft-check para 'S' sem consumir imediatamente
+        if (!BlenderHelper.IsKeyDown(evt, KeyCode.S))
+            return false;
+        if (BlenderHelper.IsModifierPressed(evt) || BlenderHelper.RightMouseHeld)
+            return false;
+
+        // Se estivermos no contexto do ProBuilder com seleção de elementos válida,
+        // NÃO consumir o evento aqui para permitir que o PBScale assuma.
+        #if UNITY_EDITOR
+        var ctxType = UnityEditor.EditorTools.ToolManager.activeContextType;
+        bool proBuilderContext = false;
+        if (ctxType != null) {
+            var fullName = ctxType.FullName ?? ctxType.Name;
+            proBuilderContext = !string.IsNullOrEmpty(fullName) && fullName.IndexOf("ProBuilder", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+        if (proBuilderContext) {
+            var mode = ProBuilderEditor.selectMode;
+            bool isElementMode = (mode & (SelectMode.Vertex | SelectMode.Edge | SelectMode.Face)) != 0;
+            if (isElementMode) {
+                foreach (var go in Selection.gameObjects) {
+                    if (go.TryGetComponent<ProBuilderMesh>(out var mesh)) {
+                        if (mesh.selectedVertexCount > 0 || mesh.selectedEdgeCount > 0 || mesh.selectedFaceCount > 0) {
+                            // Há seleção PB válida: deixar o PBScale lidar com 'S'
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        #endif
+
+        // Fora do editmode do ProBuilder (ou sem seleção PB válida), consumir e acionar escala de objeto
+        evt.Use();
+        return true;
     }
 
     public override void Initialize() {
@@ -159,7 +194,7 @@ public class BlenderScale : BlenderTransformMode {
     void ScaleByMouse(PerObjectData data) {
         float snapValue = BlenderHelper.GetSnapScale();
         // Calculate the center of the object in screen space
-        var center = HandleUtility.WorldToGUIPoint(BlenderHelper.GetTransformationCenter(averagePosition, bounds));
+        var center = UnityEditor.HandleUtility.WorldToGUIPoint(BlenderHelper.GetTransformationCenter(averagePosition, bounds));
 
         Vector3 centerToStartMouse = mouseStartPosition - center;
         Vector3 centerToCurrentMouse = Event.current.mousePosition - center;

@@ -28,7 +28,8 @@ public static class BlenderManager {
 
     static BlenderManager() {
         // Create an instance of BlenderMove when the BlenderManager is enabled
-        TransformModes = new List<BlenderTransformMode> { new BlenderMove(), new BlenderRotate(), new BlenderScale() };
+        // Order matters: ProBuilder-aware move should take precedence when in ProBuilder Edit Mode
+        TransformModes = new List<BlenderTransformMode> { new BlenderPBMove(), new BlenderMove(), new BlenderRotate(), new BlenderPBScale(), new BlenderScale() };
 
         SceneView.duringSceneGui -= OnDuringSceneGUI;
         SceneView.duringSceneGui += OnDuringSceneGUI;
@@ -123,6 +124,8 @@ public static class BlenderManager {
                 Reset();
                 CurrentTransformMode = transformMode;
                 CurrentTransformMode.Initialize();
+                // Stop iterating once a mode has been selected to honor registration precedence
+                break;
             }
         }
 
