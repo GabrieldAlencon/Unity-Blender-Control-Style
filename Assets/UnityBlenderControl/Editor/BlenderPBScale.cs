@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.ProBuilder;
 using UnityEditor.ProBuilder;
 using static TransformModeManager;
+using PHandleUtility = UnityEngine.ProBuilder.HandleUtility;
 
 public class BlenderPBScale : BlenderTransformMode {
     struct MeshData {
@@ -21,7 +22,7 @@ public class BlenderPBScale : BlenderTransformMode {
     private Bounds _selectionBounds;
 
     public override bool ShouldTrigger(Event evt) {
-        // Mesma precedência do PBMove, espelhando lógica de gatilho
+        // Same precedence as PBMove, mirroring trigger logic
         if (!BlenderHelper.IsKeyDown(evt, KeyCode.S))
             return false;
         if (BlenderHelper.IsModifierPressed(evt) || BlenderHelper.RightMouseHeld)
@@ -29,7 +30,7 @@ public class BlenderPBScale : BlenderTransformMode {
         if (Selection.transforms == null || Selection.transforms.Length == 0)
             return false;
 
-        // Garantir que o contexto ativo seja ProBuilder, como no PBMove
+        // Ensure the active context is ProBuilder, same as PBMove
         #if UNITY_EDITOR
         var ctxType = UnityEditor.EditorTools.ToolManager.activeContextType;
         bool proBuilderContext = false;
@@ -46,7 +47,7 @@ public class BlenderPBScale : BlenderTransformMode {
         if (!isElementMode)
             return false;
 
-        // Verifique índices válidos (coincidentes) como no PBMove para evitar falso-positivo
+        // Check for valid (coincident) indices as in PBMove to avoid false positives
         bool hasValidIndices = false;
         foreach (var go in Selection.gameObjects) {
             if (!go.TryGetComponent<ProBuilderMesh>(out var mesh))
@@ -61,7 +62,7 @@ public class BlenderPBScale : BlenderTransformMode {
         if (!hasValidIndices)
             return false;
 
-        // Consumir o evento somente quando temos seleção PB válida
+        // Consume the event only when we have a valid PB selection
         evt.Use();
         return true;
     }
@@ -87,7 +88,7 @@ public class BlenderPBScale : BlenderTransformMode {
                 continue;
 
             var world = mesh.VerticesInWorldSpace();
-            var local = mesh.positions; // usar API pública de posições do ProBuilder
+            var local = mesh.positions; // use ProBuilder public positions API
 
             Vector3 avg = Vector3.zero;
             var initLocal = new Vector3[indices.Count];
@@ -108,7 +109,7 @@ public class BlenderPBScale : BlenderTransformMode {
                 InitialLocalPositions = initLocal,
                 InitialWorldPositions = initWorld,
                 InitialAverageWorld = avg,
-                LocalAxis = BlenderHelper.GetObjectAxis(mesh.transform, BlenderManager.CurrentAxisVector)
+                LocalAxis = ComputeLocalAxis(mesh, BlenderManager.CurrentAxisVector)
             };
             _meshData.Add(md);
             _globalAverage += avg;
@@ -118,7 +119,7 @@ public class BlenderPBScale : BlenderTransformMode {
         if (contributing > 0) {
             _globalAverage /= contributing;
         } else {
-            // Não há dados válidos: sair imediatamente e liberar estado para evitar travamento
+            // No valid data: exit immediately and release state to avoid locking up
             ProBuilderEditor.Refresh(false);
             _meshData = null;
             BlenderManager.CurrentTransformMode = null;
@@ -127,21 +128,21 @@ public class BlenderPBScale : BlenderTransformMode {
     }
 
     public override void Cancel() {
-        // Se não houver dados, apenas atualizar a UI e sair
+        // If there is no data, just refresh the UI and exit
         if (_meshData == null || _meshData.Count == 0) {
             ProBuilderEditor.Refresh(false);
             _meshData = null;
             return;
         }
-        // Reverter posições locais para os valores iniciais
+        // Revert local positions to their initial values
         foreach (var md in _meshData) {
-            // Copiar para uma lista mutável e aplicar as posições iniciais
+            // Copy into a mutable list and apply the initial positions
             var positions = new List<Vector3>(md.Mesh.positions);
             for (int j = 0; j < md.SelectedIndexes.Length; j++) {
                 positions[md.SelectedIndexes[j]] = md.InitialLocalPositions[j];
             }
             md.Mesh.positions = positions;
-            // Sincronizar com a Unity Mesh após restaurar posições
+            // Sync with the Unity Mesh after restoring positions
             md.Mesh.ToMesh();
             md.Mesh.Refresh(RefreshMask.All);
         }
@@ -156,7 +157,7 @@ public class BlenderPBScale : BlenderTransformMode {
             return;
         }
         foreach (var md in _meshData) {
-            // Garantir que a Unity Mesh esteja atualizada ao finalizar
+            // Ensure the Unity Mesh is up to date when finalizing
             md.Mesh.ToMesh();
             md.Mesh.Refresh(RefreshMask.All);
         }
@@ -174,7 +175,7 @@ public class BlenderPBScale : BlenderTransformMode {
             amount = ComputeMouseScaleFactor();
         }
 
-        // Snap opcional
+        // Optional snapping
         if (isSnappingEnabled) {
             float snap = BlenderHelper.GetSnapScale();
             amount = Mathf.Round(amount / snap) * snap;
@@ -189,7 +190,7 @@ public class BlenderPBScale : BlenderTransformMode {
     public override void OnAxisChange() {
         for (int i = 0; i < _meshData.Count; i++) {
             var md = _meshData[i];
-            md.LocalAxis = BlenderHelper.GetObjectAxis(md.Mesh.transform, BlenderManager.CurrentAxisVector);
+            md.LocalAxis = ComputeLocalAxis(md.Mesh, BlenderManager.CurrentAxisVector);
             _meshData[i] = md;
         }
     }
@@ -201,7 +202,7 @@ public class BlenderPBScale : BlenderTransformMode {
     public override void DrawSceneGUI(SceneView sceneView) {
         if (_meshData == null || _meshData.Count == 0)
             return;
-        // Linha de referência do centro ao mouse para feedback visual
+        // Reference line from center to mouse for visual feedback
         var mp = Event.current.mousePosition;
         var cam = sceneView.camera;
         float screenScale = Screen.dpi / 96f;
@@ -236,7 +237,7 @@ public class BlenderPBScale : BlenderTransformMode {
         return factor;
     }
 
-    // Helper: coletar índices válidos da seleção atual com coincidências
+    // Helper: collect valid indices from the current selection with coincidences
     List<int> CollectSelectedIndices(ProBuilderMesh mesh, SelectMode mode) {
         var indices = new List<int>();
         if ((mode & SelectMode.Vertex) != 0) {
@@ -250,19 +251,19 @@ public class BlenderPBScale : BlenderTransformMode {
     }
 
     void DoScale(MeshData md, float amount) {
-        // Trabalhar sobre uma cópia mutável das posições e reatribuir ao mesh
+        // Work on a mutable copy of positions and reassign to the mesh
         var positions = new List<Vector3>(md.Mesh.positions);
         Vector3 pivot = BlenderHelper.GetTransformationCenter(_globalAverage, _selectionBounds);
 
         if (BlenderManager.CurrentAxisMode == BlenderManager.AxisMode.Unlocked) {
-            // Escala uniforme em torno do pivô (em espaço de mundo)
+            // Uniform scale around the pivot (in world space)
             for (int j = 0; j < md.SelectedIndexes.Length; j++) {
                 var initialWorld = md.InitialWorldPositions[j];
                 var newWorld = pivot + (initialWorld - pivot) * amount;
                 positions[md.SelectedIndexes[j]] = md.Mesh.transform.InverseTransformPoint(newWorld);
             }
         } else {
-            // Escala em um único eixo (global ou local), ajustando apenas a componente projetada
+            // Scale along a single axis (global or local), adjusting only the projected component
             Vector3 axis = BlenderManager.CurrentAxisMode == BlenderManager.AxisMode.Global
                 ? BlenderManager.CurrentAxisVector
                 : md.LocalAxis;
@@ -275,10 +276,33 @@ public class BlenderPBScale : BlenderTransformMode {
             }
         }
 
-        // Reatribuir posições ao ProBuilderMesh para evitar NotSupportedException
+        // Reassign positions to ProBuilderMesh to avoid NotSupportedException
         md.Mesh.positions = positions;
-        // Sincronizar alterações com a Unity Mesh em tempo real
+        // Sync changes with the Unity Mesh in real time
         md.Mesh.ToMesh();
         md.Mesh.Refresh(RefreshMask.All);
+    }
+
+    Quaternion ComputeElementRotation(ProBuilderMesh mesh) {
+        // Try to align to the active element selection; fall back to object rotation
+        try {
+            if (mesh.selectedFaceCount > 0)
+                return PHandleUtility.GetFaceRotation(mesh, HandleOrientation.ActiveElement, mesh.GetSelectedFaces());
+            if (mesh.selectedEdgeCount > 0)
+                return PHandleUtility.GetEdgeRotation(mesh, HandleOrientation.ActiveElement, mesh.selectedEdges);
+            if (mesh.selectedVertexCount > 0)
+                return PHandleUtility.GetVertexRotation(mesh, HandleOrientation.ActiveElement, mesh.selectedVertices);
+        } catch { /* fallback */ }
+        return mesh.transform.rotation;
+    }
+
+    Vector3 ComputeLocalAxis(ProBuilderMesh mesh, Vector3 baseAxis) {
+        // Use the element rotation when available; otherwise use the object's axis
+        try {
+            var rot = ComputeElementRotation(mesh);
+            if (rot != mesh.transform.rotation)
+                return rot * baseAxis;
+        } catch { /* ignore */ }
+        return BlenderHelper.GetObjectAxis(mesh.transform, baseAxis);
     }
 }

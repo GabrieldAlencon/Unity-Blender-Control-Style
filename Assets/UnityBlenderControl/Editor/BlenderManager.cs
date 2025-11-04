@@ -29,7 +29,7 @@ public static class BlenderManager {
     static BlenderManager() {
         // Create an instance of BlenderMove when the BlenderManager is enabled
         // Order matters: ProBuilder-aware move should take precedence when in ProBuilder Edit Mode
-        TransformModes = new List<BlenderTransformMode> { new BlenderPBMove(), new BlenderMove(), new BlenderRotate(), new BlenderPBScale(), new BlenderScale() };
+        TransformModes = new List<BlenderTransformMode> { new BlenderPBMove(), new BlenderMove(), new BlenderPBRotate(), new BlenderRotate(), new BlenderPBScale(), new BlenderScale() };
 
         SceneView.duringSceneGui -= OnDuringSceneGUI;
         SceneView.duringSceneGui += OnDuringSceneGUI;
@@ -48,6 +48,16 @@ public static class BlenderManager {
     public static AxisMode CurrentAxisMode {
         get {
             if (LockToAxis) {
+                // If ProBuilder editor context is active, treat lock as Local without touching Tools.pivotRotation
+                var ctxType = UnityEditor.EditorTools.ToolManager.activeContextType;
+                bool proBuilderContext = false;
+                if (ctxType != null) {
+                    var fullName = ctxType.FullName ?? ctxType.Name;
+                    proBuilderContext = !string.IsNullOrEmpty(fullName) && fullName.IndexOf("ProBuilder", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+                if (proBuilderContext)
+                    return AxisMode.Local;
+
                 return Tools.pivotRotation == PivotRotation.Global ? AxisMode.Global : AxisMode.Local;
             } else {
                 return AxisMode.Unlocked;
@@ -78,17 +88,31 @@ public static class BlenderManager {
     }
 
     static void AdvanceAxisLockMode() {
-        // change axis mode Unlocked -> Global -> Local -> Unlocked
+        // Detect ProBuilder tool context and avoid changing Tools.pivotRotation when active
+        var ctxType = UnityEditor.EditorTools.ToolManager.activeContextType;
+        bool proBuilderContext = false;
+        if (ctxType != null) {
+            var fullName = ctxType.FullName ?? ctxType.Name;
+            proBuilderContext = !string.IsNullOrEmpty(fullName) && fullName.IndexOf("ProBuilder", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        if (proBuilderContext) {
+            // In ProBuilder context, toggle lock on/off and treat as Local
+            if (!LockToAxis) {
+                LockToAxis = true;
+            } else {
+                LockToAxis = false;
+            }
+            return;
+        }
+
+        // Default behavior: change axis mode Unlocked -> Global -> Local -> Unlocked, syncing Tools.pivotRotation
         if (!LockToAxis) {
             LockToAxis = true;
-        }
-        else {
+        } else {
             if (Tools.pivotRotation == PreviousPivotRotation) {
-                // switch pivot rotation
                 Tools.pivotRotation = Tools.pivotRotation == PivotRotation.Global ? PivotRotation.Local : PivotRotation.Global;
-            }
-            else {
-                // revert to unlocked
+            } else {
                 LockToAxis = false;
                 Tools.pivotRotation = PreviousPivotRotation;
             }
@@ -97,7 +121,16 @@ public static class BlenderManager {
 
     static void ResetAxisLockMode() {
         LockToAxis = false;
-        Tools.pivotRotation = PreviousPivotRotation;
+        // If not in ProBuilder context, restore Tools.pivotRotation
+        var ctxType = UnityEditor.EditorTools.ToolManager.activeContextType;
+        bool proBuilderContext = false;
+        if (ctxType != null) {
+            var fullName = ctxType.FullName ?? ctxType.Name;
+            proBuilderContext = !string.IsNullOrEmpty(fullName) && fullName.IndexOf("ProBuilder", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+        if (!proBuilderContext) {
+            Tools.pivotRotation = PreviousPivotRotation;
+        }
     }
 
     static Color GetAxisColor(bool active) {

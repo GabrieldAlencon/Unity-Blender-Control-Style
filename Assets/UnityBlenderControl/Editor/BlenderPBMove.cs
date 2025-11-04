@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.ProBuilder;
 using UnityEditor.ProBuilder;
 using static TransformModeManager;
+using PHandleUtility = UnityEngine.ProBuilder.HandleUtility;
 
 public class BlenderPBMove : BlenderTransformMode {
     struct MeshData {
@@ -13,6 +14,7 @@ public class BlenderPBMove : BlenderTransformMode {
         public Vector3 InitialMouseWorld;
         public Vector3 LocalAxis;
         public Vector3 LastAppliedOffset; // world space offset applied so far
+        public Quaternion ElementRotation; // rotation aligned with active element selection
     }
 
     private List<MeshData> _meshData;
@@ -96,7 +98,8 @@ public class BlenderPBMove : BlenderTransformMode {
                 SelectedIndexes = indices.ToArray(),
                 InitialAverageWorld = avg,
                 InitialMouseWorld = GetWorldMouse(avg),
-                LocalAxis = BlenderHelper.GetObjectAxis(mesh.transform, BlenderManager.CurrentAxisVector),
+                ElementRotation = ComputeElementRotation(mesh),
+                LocalAxis = ComputeLocalAxis(mesh, BlenderManager.CurrentAxisVector),
                 LastAppliedOffset = Vector3.zero
             };
             _meshData.Add(md);
@@ -113,7 +116,7 @@ public class BlenderPBMove : BlenderTransformMode {
         foreach (var md in _meshData) {
             if (md.LastAppliedOffset != Vector3.zero) {
                 md.Mesh.TranslateVerticesInWorldSpace(md.SelectedIndexes, -md.LastAppliedOffset);
-                md.Mesh.Refresh(RefreshMask.Normals | RefreshMask.Bounds);
+                md.Mesh.Refresh(RefreshMask.Normals | RefreshMask.UV | RefreshMask.Bounds);
             }
         }
         ProBuilderEditor.Refresh(false);
@@ -123,7 +126,7 @@ public class BlenderPBMove : BlenderTransformMode {
     public override void Apply() {
         // Finalize changes
         foreach (var md in _meshData) {
-            md.Mesh.Refresh(RefreshMask.Normals | RefreshMask.Bounds);
+            md.Mesh.Refresh(RefreshMask.Normals | RefreshMask.UV | RefreshMask.Bounds);
         }
         ProBuilderEditor.Refresh(false);
         _meshData = null;
@@ -174,10 +177,11 @@ public class BlenderPBMove : BlenderTransformMode {
     }
 
     public override void OnAxisChange() {
-        // Update local axis for each mesh
+        // Update local axis for each mesh (respect Element orientation when active)
         for (int i = 0; i < _meshData.Count; i++) {
             var md = _meshData[i];
-            md.LocalAxis = BlenderHelper.GetObjectAxis(md.Mesh.transform, BlenderManager.CurrentAxisVector);
+            md.ElementRotation = ComputeElementRotation(md.Mesh);
+            md.LocalAxis = ComputeLocalAxis(md.Mesh, BlenderManager.CurrentAxisVector);
             _meshData[i] = md;
         }
     }
@@ -195,7 +199,8 @@ public class BlenderPBMove : BlenderTransformMode {
                 break;
             case BlenderManager.AxisMode.Local:
                 foreach (var md in _meshData) {
-                    BlenderManager.DrawAxisLine(md.InitialAverageWorld, md.LocalAxis, Selection.activeGameObject == md.Mesh.gameObject);
+                    var axis = GetAxis(md);
+                    BlenderManager.DrawAxisLine(md.InitialAverageWorld, axis, Selection.activeGameObject == md.Mesh.gameObject);
                 }
                 break;
         }
@@ -215,6 +220,29 @@ public class BlenderPBMove : BlenderTransformMode {
         Vector3 mouse = Event.current.mousePosition;
         mouse.y = sceneViewCamera.pixelHeight - mouse.y; // invert Y
         return sceneViewCamera.ScreenToWorldPoint(new Vector3(mouse.x, mouse.y, z));
+    }
+
+    Quaternion ComputeElementRotation(ProBuilderMesh mesh) {
+        // Always try to align to active element selection; fall back to object rotation
+        try {
+            if (mesh.selectedFaceCount > 0)
+                return PHandleUtility.GetFaceRotation(mesh, HandleOrientation.ActiveElement, mesh.GetSelectedFaces());
+            if (mesh.selectedEdgeCount > 0)
+                return PHandleUtility.GetEdgeRotation(mesh, HandleOrientation.ActiveElement, mesh.selectedEdges);
+            if (mesh.selectedVertexCount > 0)
+                return PHandleUtility.GetVertexRotation(mesh, HandleOrientation.ActiveElement, mesh.selectedVertices);
+        } catch { /* fallback */ }
+        return mesh.transform.rotation;
+    }
+
+    Vector3 ComputeLocalAxis(ProBuilderMesh mesh, Vector3 baseAxis) {
+        // Use element rotation if available; otherwise use object axis
+        try {
+            var rot = ComputeElementRotation(mesh);
+            if (rot != mesh.transform.rotation)
+                return rot * baseAxis;
+        } catch { /* ignore */ }
+        return BlenderHelper.GetObjectAxis(mesh.transform, baseAxis);
     }
 
     Vector3 SnapVector(Vector3 v, Vector3 snap) {
