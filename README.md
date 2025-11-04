@@ -36,7 +36,7 @@ Install this fork (two options):
   1) `Add package from git URL...`
   2) Paste:
   ```
-  https://github.com/GabrieldAlencon/Unity-Blender-Control-Style.git?path=/Assets/UnityBlenderControl
+  https://github.com/GabrieldAlencon/Unity-Blender-Control-Style-ProBuilder-Support.git?path=/Assets/UnityBlenderControl
   ```
 
 - Via Disk (local):
