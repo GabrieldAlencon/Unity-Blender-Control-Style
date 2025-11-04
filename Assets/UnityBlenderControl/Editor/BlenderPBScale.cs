@@ -109,7 +109,7 @@ public class BlenderPBScale : BlenderTransformMode {
                 InitialLocalPositions = initLocal,
                 InitialWorldPositions = initWorld,
                 InitialAverageWorld = avg,
-                LocalAxis = ComputeLocalAxis(mesh, BlenderManager.CurrentAxisVector)
+                LocalAxis = ComputeLocalAxis(mesh, GetBaseAxis())
             };
             _meshData.Add(md);
             _globalAverage += avg;
@@ -190,7 +190,7 @@ public class BlenderPBScale : BlenderTransformMode {
     public override void OnAxisChange() {
         for (int i = 0; i < _meshData.Count; i++) {
             var md = _meshData[i];
-            md.LocalAxis = ComputeLocalAxis(md.Mesh, BlenderManager.CurrentAxisVector);
+            md.LocalAxis = ComputeLocalAxis(md.Mesh, GetBaseAxis());
             _meshData[i] = md;
         }
     }
@@ -215,7 +215,7 @@ public class BlenderPBScale : BlenderTransformMode {
             case BlenderManager.AxisMode.Unlocked:
                 break;
             case BlenderManager.AxisMode.Global:
-                BlenderManager.DrawAxisLine(center, BlenderManager.CurrentAxisVector, true);
+                BlenderManager.DrawAxisLine(center, GetBaseAxis(), true);
                 break;
             case BlenderManager.AxisMode.Local:
                 foreach (var md in _meshData) {
@@ -265,7 +265,7 @@ public class BlenderPBScale : BlenderTransformMode {
         } else {
             // Scale along a single axis (global or local), adjusting only the projected component
             Vector3 axis = BlenderManager.CurrentAxisMode == BlenderManager.AxisMode.Global
-                ? BlenderManager.CurrentAxisVector
+                ? GetBaseAxis()
                 : md.LocalAxis;
             axis.Normalize();
             for (int j = 0; j < md.SelectedIndexes.Length; j++) {
@@ -304,5 +304,15 @@ public class BlenderPBScale : BlenderTransformMode {
                 return rot * baseAxis;
         } catch { /* ignore */ }
         return BlenderHelper.GetObjectAxis(mesh.transform, baseAxis);
+    }
+
+    // Base axis: usa CurrentAxis diretamente (swap já aplicado ao definir CurrentAxis)
+    Vector3 GetBaseAxis() {
+        switch (BlenderManager.CurrentAxis) {
+            case BlenderManager.Axis.X: return Vector3.right;
+            case BlenderManager.Axis.Y: return Vector3.up;
+            case BlenderManager.Axis.Z: return Vector3.forward;
+            default: return Vector3.one;
+        }
     }
 }

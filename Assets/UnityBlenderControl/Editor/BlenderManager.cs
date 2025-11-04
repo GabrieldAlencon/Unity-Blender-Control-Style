@@ -47,21 +47,11 @@ public static class BlenderManager {
 
     public static AxisMode CurrentAxisMode {
         get {
-            if (LockToAxis) {
-                // If ProBuilder editor context is active, treat lock as Local without touching Tools.pivotRotation
-                var ctxType = UnityEditor.EditorTools.ToolManager.activeContextType;
-                bool proBuilderContext = false;
-                if (ctxType != null) {
-                    var fullName = ctxType.FullName ?? ctxType.Name;
-                    proBuilderContext = !string.IsNullOrEmpty(fullName) && fullName.IndexOf("ProBuilder", System.StringComparison.OrdinalIgnoreCase) >= 0;
-                }
-                if (proBuilderContext)
-                    return AxisMode.Local;
-
-                return Tools.pivotRotation == PivotRotation.Global ? AxisMode.Global : AxisMode.Local;
-            } else {
+            if (!LockToAxis)
                 return AxisMode.Unlocked;
-            }
+
+            // Unify behavior with default Unity tools
+            return Tools.pivotRotation == PivotRotation.Global ? AxisMode.Global : AxisMode.Local;
         }
     }
     public static Vector3 CurrentAxisVector {
@@ -88,25 +78,7 @@ public static class BlenderManager {
     }
 
     static void AdvanceAxisLockMode() {
-        // Detect ProBuilder tool context and avoid changing Tools.pivotRotation when active
-        var ctxType = UnityEditor.EditorTools.ToolManager.activeContextType;
-        bool proBuilderContext = false;
-        if (ctxType != null) {
-            var fullName = ctxType.FullName ?? ctxType.Name;
-            proBuilderContext = !string.IsNullOrEmpty(fullName) && fullName.IndexOf("ProBuilder", System.StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        if (proBuilderContext) {
-            // In ProBuilder context, toggle lock on/off and treat as Local
-            if (!LockToAxis) {
-                LockToAxis = true;
-            } else {
-                LockToAxis = false;
-            }
-            return;
-        }
-
-        // Default behavior: change axis mode Unlocked -> Global -> Local -> Unlocked, syncing Tools.pivotRotation
+        // Default behavior everywhere: Unlocked -> Global -> Local -> Unlocked, syncing Tools.pivotRotation
         if (!LockToAxis) {
             LockToAxis = true;
         } else {
@@ -121,16 +93,8 @@ public static class BlenderManager {
 
     static void ResetAxisLockMode() {
         LockToAxis = false;
-        // If not in ProBuilder context, restore Tools.pivotRotation
-        var ctxType = UnityEditor.EditorTools.ToolManager.activeContextType;
-        bool proBuilderContext = false;
-        if (ctxType != null) {
-            var fullName = ctxType.FullName ?? ctxType.Name;
-            proBuilderContext = !string.IsNullOrEmpty(fullName) && fullName.IndexOf("ProBuilder", System.StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-        if (!proBuilderContext) {
-            Tools.pivotRotation = PreviousPivotRotation;
-        }
+        // Always restore Tools.pivotRotation to previous value
+        Tools.pivotRotation = PreviousPivotRotation;
     }
 
     static Color GetAxisColor(bool active) {

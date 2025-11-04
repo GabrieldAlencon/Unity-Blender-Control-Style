@@ -99,7 +99,7 @@ public class BlenderPBRotate : BlenderTransformMode {
                 InitialLocalPositions = initLocal,
                 InitialWorldPositions = initWorld,
                 InitialAverageWorld = avg,
-                LocalAxis = ComputeLocalAxis(mesh, BlenderManager.CurrentAxisVector)
+                LocalAxis = ComputeLocalAxis(mesh, GetBaseAxis())
             };
             _meshData.Add(md);
             _globalAverage += avg;
@@ -165,7 +165,7 @@ public class BlenderPBRotate : BlenderTransformMode {
         if (_meshData == null) return;
         for (int i = 0; i < _meshData.Count; i++) {
             var md = _meshData[i];
-            md.LocalAxis = ComputeLocalAxis(md.Mesh, BlenderManager.CurrentAxisVector);
+            md.LocalAxis = ComputeLocalAxis(md.Mesh, GetBaseAxis());
             _meshData[i] = md;
         }
     }
@@ -190,7 +190,7 @@ public class BlenderPBRotate : BlenderTransformMode {
             case BlenderManager.AxisMode.Unlocked:
                 break;
             case BlenderManager.AxisMode.Global:
-                BlenderManager.DrawAxisLine(center, BlenderManager.CurrentAxisVector, true);
+                BlenderManager.DrawAxisLine(center, GetBaseAxis(), true);
                 break;
             case BlenderManager.AxisMode.Local:
                 foreach (var md in _meshData) {
@@ -218,7 +218,7 @@ public class BlenderPBRotate : BlenderTransformMode {
 
         Vector3 axis = BlenderManager.CurrentAxisMode switch {
             BlenderManager.AxisMode.Local => md.LocalAxis,
-            BlenderManager.AxisMode.Global => BlenderManager.CurrentAxisVector,
+            BlenderManager.AxisMode.Global => GetBaseAxis(),
             _ => -sv.camera.transform.forward
         };
         axis.Normalize();
@@ -250,13 +250,13 @@ public class BlenderPBRotate : BlenderTransformMode {
             if (BlenderManager.CurrentAxisMode == BlenderManager.AxisMode.Local) {
                 var go = Selection.activeGameObject;
                 if (go != null && go.TryGetComponent<ProBuilderMesh>(out var mesh)) {
-                    var axis = ComputeLocalAxis(mesh, BlenderManager.CurrentAxisVector);
+                    var axis = ComputeLocalAxis(mesh, GetBaseAxis());
                     invert = Vector3.Dot(viewDir, axis) > 0f;
                 } else {
-                    invert = Vector3.Dot(viewDir, Selection.activeTransform.rotation * BlenderManager.CurrentAxisVector) > 0f;
+                    invert = Vector3.Dot(viewDir, Selection.activeTransform.rotation * GetBaseAxis()) > 0f;
                 }
             } else if (BlenderManager.CurrentAxisMode == BlenderManager.AxisMode.Global) {
-                invert = Vector3.Dot(viewDir, BlenderManager.CurrentAxisVector) > 0f;
+                invert = Vector3.Dot(viewDir, GetBaseAxis()) > 0f;
             }
             if (invert) rotationAngle = -rotationAngle;
         }
@@ -290,5 +290,15 @@ public class BlenderPBRotate : BlenderTransformMode {
                 return rot * baseAxis;
         } catch { /* ignore */ }
         return BlenderHelper.GetObjectAxis(mesh.transform, baseAxis);
+    }
+
+    // Base axis: use CurrentAxis diretamente (swap já aplicado ao definir CurrentAxis)
+    Vector3 GetBaseAxis() {
+        switch (BlenderManager.CurrentAxis) {
+            case BlenderManager.Axis.X: return Vector3.right;
+            case BlenderManager.Axis.Y: return Vector3.up;
+            case BlenderManager.Axis.Z: return Vector3.forward;
+            default: return Vector3.one;
+        }
     }
 }

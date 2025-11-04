@@ -99,7 +99,7 @@ public class BlenderPBMove : BlenderTransformMode {
                 InitialAverageWorld = avg,
                 InitialMouseWorld = GetWorldMouse(avg),
                 ElementRotation = ComputeElementRotation(mesh),
-                LocalAxis = ComputeLocalAxis(mesh, BlenderManager.CurrentAxisVector),
+                LocalAxis = ComputeLocalAxis(mesh, GetBaseAxis()),
                 LastAppliedOffset = Vector3.zero
             };
             _meshData.Add(md);
@@ -181,7 +181,7 @@ public class BlenderPBMove : BlenderTransformMode {
         for (int i = 0; i < _meshData.Count; i++) {
             var md = _meshData[i];
             md.ElementRotation = ComputeElementRotation(md.Mesh);
-            md.LocalAxis = ComputeLocalAxis(md.Mesh, BlenderManager.CurrentAxisVector);
+            md.LocalAxis = ComputeLocalAxis(md.Mesh, GetBaseAxis());
             _meshData[i] = md;
         }
     }
@@ -195,7 +195,7 @@ public class BlenderPBMove : BlenderTransformMode {
             case BlenderManager.AxisMode.Unlocked:
                 break;
             case BlenderManager.AxisMode.Global:
-                BlenderManager.DrawAxisLine(_globalAverage, BlenderManager.CurrentAxisVector, true);
+                BlenderManager.DrawAxisLine(_globalAverage, GetBaseAxis(), true);
                 break;
             case BlenderManager.AxisMode.Local:
                 foreach (var md in _meshData) {
@@ -209,7 +209,7 @@ public class BlenderPBMove : BlenderTransformMode {
     Vector3 GetAxis(MeshData md) {
         return BlenderManager.CurrentAxisMode switch {
             BlenderManager.AxisMode.Local => md.LocalAxis,
-            BlenderManager.AxisMode.Global => BlenderManager.CurrentAxisVector,
+            BlenderManager.AxisMode.Global => GetBaseAxis(),
             _ => Vector3.zero
         };
     }
@@ -243,6 +243,16 @@ public class BlenderPBMove : BlenderTransformMode {
                 return rot * baseAxis;
         } catch { /* ignore */ }
         return BlenderHelper.GetObjectAxis(mesh.transform, baseAxis);
+    }
+
+    // Base axis: use CurrentAxis directly (swap já aplicado ao definir CurrentAxis)
+    Vector3 GetBaseAxis() {
+        switch (BlenderManager.CurrentAxis) {
+            case BlenderManager.Axis.X: return Vector3.right;
+            case BlenderManager.Axis.Y: return Vector3.up;
+            case BlenderManager.Axis.Z: return Vector3.forward;
+            default: return Vector3.one;
+        }
     }
 
     Vector3 SnapVector(Vector3 v, Vector3 snap) {
