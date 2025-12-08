@@ -28,7 +28,8 @@ public static class BlenderManager {
 
     static BlenderManager() {
         // Create an instance of BlenderMove when the BlenderManager is enabled
-        TransformModes = new List<BlenderTransformMode> { new BlenderMove(), new BlenderRotate(), new BlenderScale() };
+        // Order matters: ProBuilder-aware move should take precedence when in ProBuilder Edit Mode
+        TransformModes = new List<BlenderTransformMode> { new BlenderPBMove(), new BlenderMove(), new BlenderPBRotate(), new BlenderRotate(), new BlenderPBScale(), new BlenderScale() };
 
         SceneView.duringSceneGui -= OnDuringSceneGUI;
         SceneView.duringSceneGui += OnDuringSceneGUI;
@@ -46,11 +47,11 @@ public static class BlenderManager {
 
     public static AxisMode CurrentAxisMode {
         get {
-            if (LockToAxis) {
-                return Tools.pivotRotation == PivotRotation.Global ? AxisMode.Global : AxisMode.Local;
-            } else {
+            if (!LockToAxis)
                 return AxisMode.Unlocked;
-            }
+
+            // Unify behavior with default Unity tools
+            return Tools.pivotRotation == PivotRotation.Global ? AxisMode.Global : AxisMode.Local;
         }
     }
     public static Vector3 CurrentAxisVector {
@@ -77,17 +78,13 @@ public static class BlenderManager {
     }
 
     static void AdvanceAxisLockMode() {
-        // change axis mode Unlocked -> Global -> Local -> Unlocked
+        // Default behavior everywhere: Unlocked -> Global -> Local -> Unlocked, syncing Tools.pivotRotation
         if (!LockToAxis) {
             LockToAxis = true;
-        }
-        else {
+        } else {
             if (Tools.pivotRotation == PreviousPivotRotation) {
-                // switch pivot rotation
                 Tools.pivotRotation = Tools.pivotRotation == PivotRotation.Global ? PivotRotation.Local : PivotRotation.Global;
-            }
-            else {
-                // revert to unlocked
+            } else {
                 LockToAxis = false;
                 Tools.pivotRotation = PreviousPivotRotation;
             }
@@ -96,6 +93,7 @@ public static class BlenderManager {
 
     static void ResetAxisLockMode() {
         LockToAxis = false;
+        // Always restore Tools.pivotRotation to previous value
         Tools.pivotRotation = PreviousPivotRotation;
     }
 
@@ -123,6 +121,8 @@ public static class BlenderManager {
                 Reset();
                 CurrentTransformMode = transformMode;
                 CurrentTransformMode.Initialize();
+                // Stop iterating once a mode has been selected to honor registration precedence
+                break;
             }
         }
 

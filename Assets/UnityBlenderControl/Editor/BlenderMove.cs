@@ -15,6 +15,8 @@ public class BlenderMove : BlenderTransformMode {
     public Vector3 averagePosition;
 
     public override bool ShouldTrigger(Event evt) {
+        // Mirror Rotate/Scale behavior: object move is available whenever G is pressed.
+        // PBMove takes precedence in ProBuilder edit mode due to registration order and its own ShouldTrigger.
         return BlenderHelper.ShouldTriggerSimple(evt, KeyCode.G);
     }
 
